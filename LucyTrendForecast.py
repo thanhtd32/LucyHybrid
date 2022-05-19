@@ -1,3 +1,7 @@
+#Authors: Duy Thanh Tran, Prof. Jun-Ho Huh, Prof. Jae-Hwan Kim
+#Data Science Lab - KMOU
+#Department of Data Science, (National) Korea Maritime and Ocean University, Busan 49112, Republic of Korea.
+#Created Date: May-19/2022
 from statsmodels.tsa.deterministic import DeterministicProcess
 from sklearn.linear_model import LinearRegression
 import pandas as pd
