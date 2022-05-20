@@ -13,36 +13,64 @@ plot_params = dict(
     markerfacecolor="0.25",
     legend=False,
 )
+
+
 class LucyTrendForecast:
-    def dotrend(self,dataset,features,target,polynomial_order,chart_title,showchart=True):
-        self.dp = DeterministicProcess(
-        index=dataset[features].index, # dates from the training data
-        constant=True,# dummy feature for the bias (y_intercept)
-        order=polynomial_order,# the time dummy (trend)
-        drop=True,# drop terms if necessary to avoid collinearity
+    def do_moving_average(self, dataset, columns, chart_title, days=365, showchart=True):
+        self.moving_average = dataset[columns].rolling(
+            window=days,  # 365-day window
+            center=True,  # puts the average at the center of the window
+            min_periods=183,  # choose about half the window size
+        ).mean()  # compute the mean (could also do median, std, min, max, ...)
+        if showchart:
+            ax = self.moving_average.plot(title=chart_title, **plot_params, alpha=0.5, ylabel="items sold", linewidth=2)
+
+    def do_trend(self, dataset, columns, chart_title, days=365, showchart=True):
+        self.do_moving_average(dataset, columns, chart_title, days, False)
+        dp = DeterministicProcess(
+            index=self.moving_average.index,  # dates from the training data
+            constant=True,  # dummy feature for the bias (y_intercept)
+            order=3,  # the time dummy (trend)
+            drop=True,  # drop terms if necessary to avoid collinearity
         )
         # `in_sample` creates features for the dates given in the `index` argument
-        self.X = self.dp.in_sample()
-        self.y = dataset[target]  # the target
+        X = dp.in_sample()
+
+        y = self.moving_average  # the target
 
         # The intercept is the same as the `const` feature from
         # DeterministicProcess. LinearRegression behaves badly with duplicated
         # features, so we need to be sure to exclude it here.
-        self.model = LinearRegression(fit_intercept=True)
-        self.model.fit(self.X, self.y)
+        model = LinearRegression(fit_intercept=False)
+        model.fit(X, y)
 
-        self.y_pred = pd.Series(self.model.predict(self.X), index=self.X.index)
+        y_pred = pd.Series(model.predict(X), index=X.index)
+
         if showchart:
-            ax = dataset[features].plot(style=".", color="0.5", title=chart_title)
-            _ = self.y_pred.plot(ax=ax, linewidth=3, label="Trend")
-    def dotrendforecast(self,dataset,features,target,polynomial_order,chart_title,date,step=30,showchart=True):
-        self.dotrend(dataset,features,target,polynomial_order,chart_title,False)
+            ax = y.plot(**plot_params, alpha=0.5, ylabel="items sold", linewidth=2, title=chart_title)
+            _ = y_pred.plot(ax=ax, linewidth=3, label="Trend")
 
-        self.X = self.dp.out_of_sample(steps=step)
+    def do_trend_forecast(self, dataset, columns, chart_title, days=365, showchart=True):
+        self.do_moving_average(dataset, columns, chart_title, days, False)
+        y = self.moving_average
 
-        self.y_fore = pd.Series(self.model.predict(self.X), index=self.X.index)
+        # Instantiate `DeterministicProcess` with arguments appropriate for a cubic trend model
+        dp = DeterministicProcess(index=y.index, order=3)
+
+        # Create the feature set for the dates given in y.index
+        X = dp.in_sample()
+
+        # Create features for a 90-day forecast.
+        X_fore = dp.out_of_sample(steps=90)
+
+        # we can see the a plot of the result:
+        model = LinearRegression()
+        model.fit(X, y)
+
+        y_pred = pd.Series(model.predict(X), index=X.index)
+        y_fore = pd.Series(model.predict(X_fore), index=X_fore.index)
         if showchart:
-            ax = dataset[target][date:].plot(title=chart_title, **plot_params)
-            ax = self.y_pred[date:].plot(ax=ax, linewidth=3, label="Trend")
-            ax = self.y_fore.plot(ax=ax, linewidth=3, label="Trend Forecast", color="C3")
-            _ = ax.legend()
+            ax = y.plot(**plot_params, alpha=0.5, title=chart_title, ylabel="items sold")
+            ax = y_pred.plot(ax=ax, linewidth=3, label="Trend", color='C0')
+            ax = y_fore.plot(ax=ax, linewidth=3, label="Trend Forecast", color='C3')
+            ax.legend()
